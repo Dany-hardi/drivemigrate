@@ -5,10 +5,10 @@ import { createOAuthClient, getAuthUrl, getUserInfo } from '../services/googleAu
 const router = Router();
 const JWT_SECRET = process.env.SESSION_SECRET || 'dev-secret';
 
-// Helper to get accounts from JWT cookie
-function getAccounts(req) {
+// Helper to get accounts from JWT Authorization header
+export function getAccounts(req) {
   try {
-    const token = req.headers.authorization?.split(' ')[1] || req.query._token;
+    const token = req.headers.authorization?.split(' ')[1];
     if (!token) return {};
     return jwt.verify(token, JWT_SECRET).accounts || {};
   } catch {
@@ -16,14 +16,25 @@ function getAccounts(req) {
   }
 }
 
-// Step 1: Redirect user to Google OAuth
+// Step 1: Redirect to Google OAuth
+// Pass existing token as state so we can merge accounts after callback
 router.get('/connect', (req, res) => {
   const { account } = req.query;
   if (!['source', 'dest'].includes(account)) {
     return res.status(400).json({ error: 'account must be "source" or "dest"' });
   }
+
+  // Get existing token to preserve already-connected accounts
+  const existingToken = req.headers.authorization?.split(' ')[1] || '';
+
   const client = createOAuthClient();
-  const url = getAuthUrl(client, account);
+  // Encode account type + existing token in state param
+  const statePayload = Buffer.from(JSON.stringify({
+    account,
+    existingToken,
+  })).toString('base64url');
+
+  const url = getAuthUrl(client, statePayload);
   res.json({ url });
 });
 
@@ -35,38 +46,44 @@ router.get('/callback', async (req, res) => {
   if (error) return res.redirect(`${FRONTEND}/auth-error?reason=${error}`);
 
   try {
+    // Decode state to get account type and existing token
+    let accountType = state;
+    let existingAccounts = {};
+
+    try {
+      const decoded = JSON.parse(Buffer.from(state, 'base64url').toString());
+      accountType = decoded.account;
+      if (decoded.existingToken) {
+        const verified = jwt.verify(decoded.existingToken, JWT_SECRET);
+        existingAccounts = verified.accounts || {};
+      }
+    } catch {
+      // state was plain string (fallback)
+      accountType = state;
+    }
+
     const client = createOAuthClient();
     const { tokens } = await client.getToken(code);
     client.setCredentials(tokens);
 
     const userInfo = await getUserInfo(client);
 
-    // Get existing accounts from token if present
-    let existingAccounts = {};
-    try {
-      const existingToken = req.query.state_token;
-      if (existingToken) {
-        existingAccounts = jwt.verify(existingToken, JWT_SECRET).accounts || {};
-      }
-    } catch {}
-
-    // Add new account
-    existingAccounts[state] = {
+    // Merge new account with existing accounts — this is the key fix
+    existingAccounts[accountType] = {
       tokens,
       email: userInfo.email,
       name: userInfo.name,
       picture: userInfo.picture,
     };
 
-    // Sign a new JWT with all accounts
+    // Sign JWT with ALL accounts (both source and dest preserved)
     const jwtToken = jwt.sign(
       { accounts: existingAccounts },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // Redirect to frontend with token
-    res.redirect(`${FRONTEND}/connect?connected=${state}&token=${jwtToken}`);
+    res.redirect(`${FRONTEND}/connect?connected=${accountType}&token=${jwtToken}`);
   } catch (err) {
     console.error('OAuth callback error:', err);
     res.redirect(`${FRONTEND}/auth-error?reason=token_exchange_failed`);
@@ -90,6 +107,4 @@ router.get('/status', (req, res) => {
   });
 });
 
-// Export getAccounts for use in other routes
-export { getAccounts };
 export default router;
