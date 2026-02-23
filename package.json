@@ -1,0 +1,16 @@
+{
+  "name": "drivemigrate",
+  "version": "1.0.0",
+  "description": "Migrate files between Google Drive accounts — cleanly.",
+  "private": true,
+  "workspaces": ["backend", "frontend", "cli"],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "npm run build --workspace=frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
