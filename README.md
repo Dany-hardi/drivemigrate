@@ -22,7 +22,7 @@
 
 Migrate files between Google accounts in minutes — folder structure intact, Google Docs exported to Office format, real-time progress. No manual downloads. No data loss.
 
-[Live Demo](https://drivemigrate.vercel.app) · [Report Bug](danyhardi06@gmail.com) · [Request Feature](danyhardi06@gmail.com)
+[Live Demo](https://drivemigrate.vercel.app) · [Report Bug](mailto:danyhardi06@gmail.com) · [Request Feature](mailto:danyhardi06@gmail.com)
 
 </div>
 
