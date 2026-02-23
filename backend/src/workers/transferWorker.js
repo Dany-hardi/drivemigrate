@@ -4,20 +4,9 @@ import IORedis from 'ioredis';
 import { google } from 'googleapis';
 import { createOAuthClient } from '../services/googleAuth.js';
 import { initDb, updateJob } from '../services/db.js';
-import {
-  downloadFile,
-  uploadFile,
-  createFolder,
-} from '../services/driveService.js';
+import { downloadFile, uploadFile, createFolder } from '../services/driveService.js';
 
-// Initialize DB first
-try {
-  initDb();
-  console.log('Worker DB initialized');
-} catch (err) {
-  console.error('Worker DB init failed:', err.message);
-  process.exit(1);
-}
+initDb();
 
 const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
@@ -59,25 +48,18 @@ async function migrateFolder(sourceDrive, destDrive, sourceFolderId, destParentI
         errorLog.push({ file: file.name, error: err.message });
       }
     }
-
-    // Update progress after every file
-    updateJob(jobId, {
-      transferred: stats.transferred,
-      failed: stats.failed,
-      error_log: errorLog,
-    });
+    await updateJob(jobId, { transferred: stats.transferred, failed: stats.failed, error_log: errorLog });
   }
 }
 
 const worker = new Worker('transfer', async (job) => {
   const { jobId, sourceTokens, destTokens, selectedItems } = job.data;
-
-  console.log(`Starting job ${jobId} with ${selectedItems.length} items`);
+  console.log(`Starting job ${jobId}`);
 
   const sourceDrive = buildDriveClient(sourceTokens);
   const destDrive = buildDriveClient(destTokens);
 
-  updateJob(jobId, { status: 'running' });
+  await updateJob(jobId, { status: 'running' });
 
   const stats = { transferred: 0, failed: 0, skipped: 0 };
   const errorLog = [];
@@ -88,10 +70,7 @@ const worker = new Worker('transfer', async (job) => {
         const newFolder = await createFolder(destDrive, item.name, null);
         await migrateFolder(sourceDrive, destDrive, item.id, newFolder.id, stats, errorLog, jobId);
       } else {
-        const fileRes = await sourceDrive.files.get({
-          fileId: item.id,
-          fields: 'id, name, mimeType',
-        });
+        const fileRes = await sourceDrive.files.get({ fileId: item.id, fields: 'id, name, mimeType' });
         const downloaded = await downloadFile(sourceDrive, fileRes.data);
         await uploadFile(destDrive, downloaded, null);
         stats.transferred++;
@@ -100,29 +79,14 @@ const worker = new Worker('transfer', async (job) => {
       stats.failed++;
       errorLog.push({ file: item.name, error: err.message });
     }
-
-    updateJob(jobId, {
-      transferred: stats.transferred,
-      failed: stats.failed,
-      skipped: stats.skipped,
-      error_log: errorLog,
-    });
+    await updateJob(jobId, { transferred: stats.transferred, failed: stats.failed, error_log: errorLog });
   }
 
   const finalStatus = stats.failed > 0 && stats.transferred === 0 ? 'failed' : 'completed';
-  updateJob(jobId, {
-    status: finalStatus,
-    transferred: stats.transferred,
-    failed: stats.failed,
-    error_log: errorLog,
-  });
-
-  console.log(`Job ${jobId} ${finalStatus}: ${stats.transferred} transferred, ${stats.failed} failed`);
+  await updateJob(jobId, { status: finalStatus, transferred: stats.transferred, failed: stats.failed, error_log: errorLog });
+  console.log(`Job ${jobId} ${finalStatus}`);
 
 }, { connection, concurrency: 2 });
 
-worker.on('completed', (job) => console.log(`BullMQ job ${job.id} completed`));
-worker.on('failed', (job, err) => console.error(`BullMQ job ${job?.id} failed:`, err.message));
-worker.on('error', (err) => console.error('Worker error:', err.message));
-
-console.log('Transfer worker running, waiting for jobs...');
+worker.on('failed', (job, err) => console.error(`Job ${job?.id} failed:`, err.message));
+console.log('Transfer worker running...');

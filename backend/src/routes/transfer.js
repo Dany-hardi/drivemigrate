@@ -9,6 +9,7 @@ const router = Router();
 
 const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
+  enableReadyCheck: false,
 });
 
 const transferQueue = new Queue('transfer', { connection });
@@ -20,15 +21,15 @@ router.post('/start', async (req, res) => {
 
   const { selectedItems } = req.body;
   if (!selectedItems || !selectedItems.length) {
-    return res.status(400).json({ error: 'No items selected for transfer' });
+    return res.status(400).json({ error: 'No items selected' });
   }
 
   if (accounts.source.email === accounts.dest.email) {
-    return res.status(400).json({ error: 'Source and destination accounts must be different' });
+    return res.status(400).json({ error: 'Source and destination must be different accounts' });
   }
 
   const jobId = uuidv4();
-  createJob(jobId, accounts.source.email, accounts.dest.email, selectedItems);
+  await createJob(jobId, accounts.source.email, accounts.dest.email, selectedItems);
 
   await transferQueue.add('migrate', {
     jobId,
@@ -40,28 +41,10 @@ router.post('/start', async (req, res) => {
   res.json({ jobId });
 });
 
-router.get('/:jobId', (req, res) => {
-  const job = getJob(req.params.jobId);
+router.get('/:jobId', async (req, res) => {
+  const job = await getJob(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json(job);
-});
-
-router.get('/:jobId/stream', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-
-  const interval = setInterval(() => {
-    const job = getJob(req.params.jobId);
-    if (!job) { send({ error: 'Job not found' }); clearInterval(interval); return res.end(); }
-    send(job);
-    if (['completed', 'failed'].includes(job.status)) { clearInterval(interval); res.end(); }
-  }, 1500);
-
-  req.on('close', () => clearInterval(interval));
 });
 
 export default router;
