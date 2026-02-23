@@ -6,7 +6,7 @@ import authRoutes from './routes/auth.js';
 import driveRoutes from './routes/drive.js';
 import transferRoutes from './routes/transfer.js';
 import { initDb } from './services/db.js';
-import { generalLimiter, authLimiter, transferLimiter } from './middleware/rateLimiter.js';
+import { generalLimiter, authLimiter } from './middleware/rateLimiter.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,11 +25,12 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000,
   },
 }));
 
-// Apply rate limiters
+// Rate limiting
 app.use(generalLimiter);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/drive', driveRoutes);
