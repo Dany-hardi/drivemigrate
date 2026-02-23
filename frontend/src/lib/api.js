@@ -1,9 +1,27 @@
 const BASE = import.meta.env.VITE_API_URL || '';
 
+// Token management
+export function getToken() {
+  return localStorage.getItem('dm_token') || '';
+}
+
+export function setToken(token) {
+  localStorage.setItem('dm_token', token);
+}
+
+export function clearToken() {
+  localStorage.removeItem('dm_token');
+}
+
 async function request(path, options = {}) {
+  const token = getToken();
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
     ...options,
   });
   if (!res.ok) {
@@ -16,7 +34,10 @@ async function request(path, options = {}) {
 export const api = {
   getAuthStatus: () => request('/auth/status'),
   connectAccount: (account) => request(`/auth/connect?account=${account}`),
-  disconnectAccount: (account) => request(`/auth/disconnect/${account}`, { method: 'DELETE' }),
+  disconnectAccount: (account) => {
+    clearToken();
+    return Promise.resolve({ success: true });
+  },
   getSourceFolders: () => request('/drive/source/folders'),
   getFolderContents: (folderId) => request(`/drive/source/folders/${folderId}`),
   getSourceQuota: () => request('/drive/source/quota'),

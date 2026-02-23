@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { createJob, getJob } from '../services/db.js';
+import { getAccounts } from './auth.js';
 
 const router = Router();
 
@@ -12,13 +13,12 @@ const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379'
 
 const transferQueue = new Queue('transfer', { connection });
 
-// Start a new transfer job
 router.post('/start', async (req, res) => {
-  const accounts = req.session?.accounts;
+  const accounts = getAccounts(req);
   if (!accounts?.source) return res.status(401).json({ error: 'Source account not connected' });
   if (!accounts?.dest) return res.status(401).json({ error: 'Destination account not connected' });
 
-  const { selectedItems } = req.body; // array of { id, name, type: 'file'|'folder' }
+  const { selectedItems } = req.body;
   if (!selectedItems || !selectedItems.length) {
     return res.status(400).json({ error: 'No items selected for transfer' });
   }
@@ -28,11 +28,8 @@ router.post('/start', async (req, res) => {
   }
 
   const jobId = uuidv4();
-
-  // Store in DB
   createJob(jobId, accounts.source.email, accounts.dest.email, selectedItems);
 
-  // Push to queue with tokens
   await transferQueue.add('migrate', {
     jobId,
     sourceTokens: accounts.source.tokens,
@@ -43,14 +40,12 @@ router.post('/start', async (req, res) => {
   res.json({ jobId });
 });
 
-// Get job status
 router.get('/:jobId', (req, res) => {
   const job = getJob(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json(job);
 });
 
-// SSE progress stream
 router.get('/:jobId/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -61,16 +56,9 @@ router.get('/:jobId/stream', (req, res) => {
 
   const interval = setInterval(() => {
     const job = getJob(req.params.jobId);
-    if (!job) {
-      send({ error: 'Job not found' });
-      clearInterval(interval);
-      return res.end();
-    }
+    if (!job) { send({ error: 'Job not found' }); clearInterval(interval); return res.end(); }
     send(job);
-    if (['completed', 'failed'].includes(job.status)) {
-      clearInterval(interval);
-      res.end();
-    }
+    if (['completed', 'failed'].includes(job.status)) { clearInterval(interval); res.end(); }
   }, 1500);
 
   req.on('close', () => clearInterval(interval));

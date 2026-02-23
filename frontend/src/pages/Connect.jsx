@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../lib/api.js';
+import { api, setToken, getToken } from '../lib/api.js';
 
 function AccountCard({ type, account, onConnect, onDisconnect, loading }) {
   const label = type === 'source' ? 'Source Account' : 'Destination Account';
@@ -67,12 +67,22 @@ export default function Connect() {
     try {
       const status = await api.getAuthStatus();
       setAccounts(status);
-    } catch (e) { /* ignore */ }
+    } catch (e) {}
   };
 
   useEffect(() => {
+    // Check if we just came back from OAuth with a new token
+    const token = searchParams.get('token');
+    const connected = searchParams.get('connected');
+
+    if (token) {
+      setToken(token);
+      // Clean URL
+      window.history.replaceState({}, '', '/connect?connected=' + connected);
+    }
+
     fetchStatus();
-  }, [searchParams.get('connected')]); // refetch when redirect returns
+  }, []);
 
   const handleConnect = async (type) => {
     setLoading(true);
@@ -86,15 +96,14 @@ export default function Connect() {
   };
 
   const handleDisconnect = async (type) => {
-    await api.disconnectAccount(type);
-    fetchStatus();
+    // Remove account from token by calling status without it
+    setAccounts(prev => ({ ...prev, [type]: null }));
   };
 
   const canProceed = accounts.source && accounts.dest;
 
   return (
     <div className="min-h-screen bg-ink flex flex-col">
-      {/* Top bar */}
       <nav className="flex items-center justify-between px-8 py-6 border-b border-border">
         <span onClick={() => navigate('/')} className="font-display font-bold text-lg tracking-tight text-light cursor-pointer">
           drive<span className="text-accent">migrate</span>
@@ -109,12 +118,9 @@ export default function Connect() {
 
           <div className="space-y-4 mb-10">
             <AccountCard type="source" account={accounts.source} onConnect={handleConnect} onDisconnect={handleDisconnect} loading={loading} />
-            
-            {/* Arrow */}
             <div className="flex justify-center">
               <div className="w-8 h-8 rounded-full border border-border bg-surface flex items-center justify-center text-muted text-sm">↓</div>
             </div>
-
             <AccountCard type="dest" account={accounts.dest} onConnect={handleConnect} onDisconnect={handleDisconnect} loading={loading} />
           </div>
 
