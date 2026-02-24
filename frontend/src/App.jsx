@@ -4,7 +4,7 @@ import Connect from './pages/Connect.jsx';
 import Select from './pages/Select.jsx';
 import Progress from './pages/Progress.jsx';
 import Done from './pages/Done.jsx';
-import Admin from '.pages/Admin.jsx';
+import Admin from './pages/Admin.jsx';
 
 export default function App() {
   return (
