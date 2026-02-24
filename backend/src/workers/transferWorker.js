@@ -104,7 +104,15 @@ const worker = new Worker('transfer', async (job) => {
   });
   console.log(`Job ${jobId} ${finalStatus}: ${stats.transferred} files, ${stats.bytes_transferred} bytes`);
 
-}, { connection, concurrency: 2 });
+}, {
+  connection,
+  concurrency: 2,
+  limiter: { max: 5, duration: 1000 },
+  settings: {
+    stalledInterval: 300000,  // 5 min
+    maxStalledCount: 3,
+  },
+});
 
 worker.on('failed', (job, err) => console.error(`Job ${job?.id} failed:`, err.message));
 worker.on('error', (err) => console.error('Worker error:', err.message));

@@ -71,11 +71,18 @@ export async function downloadFile(driveClient, file) {
     const buffer = Buffer.from(res.data);
     return { buffer, mimeType: exportFormat.mimeType, name: file.name + exportFormat.ext, size: buffer.length };
   }
+  // Use stream for large files to avoid memory issues
   const res = await driveClient.files.get(
     { fileId: file.id, alt: 'media' },
-    { responseType: 'arraybuffer' }
+    { responseType: 'stream' }
   );
-  const buffer = Buffer.from(res.data);
+  const chunks = [];
+  await new Promise((resolve, reject) => {
+    res.data.on('data', chunk => chunks.push(chunk));
+    res.data.on('end', resolve);
+    res.data.on('error', reject);
+  });
+  const buffer = Buffer.concat(chunks);
   return { buffer, mimeType: file.mimeType, name: file.name, size: buffer.length };
 }
 
