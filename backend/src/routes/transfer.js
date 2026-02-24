@@ -12,6 +12,9 @@ const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379'
   enableReadyCheck: false,
 });
 
+connection.on('error', (err) => console.error('Transfer route Redis error:', err.message));
+connection.on('connect', () => console.log('Transfer route connected to Redis'));
+
 const transferQueue = new Queue('transfer', { connection });
 
 router.post('/start', async (req, res) => {
@@ -31,13 +34,14 @@ router.post('/start', async (req, res) => {
   const jobId = uuidv4();
   await createJob(jobId, accounts.source.email, accounts.dest.email, selectedItems);
 
-  await transferQueue.add('migrate', {
+  const bullJob = await transferQueue.add('migrate', {
     jobId,
     sourceTokens: accounts.source.tokens,
     destTokens: accounts.dest.tokens,
     selectedItems,
   }, { jobId });
 
+  console.log(`Job created: ${jobId} | BullMQ: ${bullJob.id} | items: ${selectedItems.length}`);
   res.json({ jobId });
 });
 
