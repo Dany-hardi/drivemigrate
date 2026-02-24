@@ -256,7 +256,7 @@ git push origin feature/your-feature
 
 ## License
 
-MIT © [Your Name](https://github.com/yourusername)
+MIT © [Your Name](https://github.com/Dany-hardi)
 
 ---
 
