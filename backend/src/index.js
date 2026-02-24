@@ -5,13 +5,13 @@ import cors from 'cors';
 import authRoutes from './routes/auth.js';
 import driveRoutes from './routes/drive.js';
 import transferRoutes from './routes/transfer.js';
+import adminRoutes from './routes/admin.js';
 import { initDb } from './services/db.js';
 import { generalLimiter, authLimiter } from './middleware/rateLimiter.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Required for Railway/Vercel — trust the proxy's X-Forwarded-For header
 app.set('trust proxy', 1);
 
 app.use(cors({
@@ -33,11 +33,11 @@ app.use(session({
   },
 }));
 
-// Rate limiting
 app.use(generalLimiter);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/drive', driveRoutes);
 app.use('/transfer', transferRoutes);
+app.use('/admin', adminRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
