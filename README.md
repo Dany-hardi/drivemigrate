@@ -256,10 +256,10 @@ git push origin feature/your-feature
 
 ## License
 
-MIT © [Your Name](https://github.com/Dany-hardi)
+MIT © [Daniel Takou](https://github.com/Dany-hardi)
 
 ---
 
 <div align="center">
-  Built with ☕ as a student project · <a href="#">Live Demo</a>
+  Built with ☕ as a student project · <a href="https://drivemigrate.vercel.app">Live Demo</a>
 </div>
