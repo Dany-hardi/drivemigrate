@@ -25,7 +25,7 @@ function buildDriveClient(tokens) {
 async function migrateFolder(sourceDrive, destDrive, sourceFolderId, destParentId, stats, errorLog, jobId) {
   const { data } = await sourceDrive.files.list({
     q: `'${sourceFolderId}' in parents and trashed = false`,
-    pageSize: 200,
+    pageSize: 1000,
     fields: 'files(id, name, mimeType, size)',
   });
 
@@ -43,12 +43,18 @@ async function migrateFolder(sourceDrive, destDrive, sourceFolderId, destParentI
         const downloaded = await downloadFile(sourceDrive, file);
         await uploadFile(destDrive, downloaded, destParentId);
         stats.transferred++;
+        stats.bytes_transferred += downloaded.size || 0;
       } catch (err) {
         stats.failed++;
         errorLog.push({ file: file.name, error: err.message });
       }
     }
-    await updateJob(jobId, { transferred: stats.transferred, failed: stats.failed, error_log: errorLog });
+    await updateJob(jobId, {
+      transferred: stats.transferred,
+      failed: stats.failed,
+      bytes_transferred: stats.bytes_transferred,
+      error_log: errorLog,
+    });
   }
 }
 
@@ -61,7 +67,7 @@ const worker = new Worker('transfer', async (job) => {
 
   await updateJob(jobId, { status: 'running' });
 
-  const stats = { transferred: 0, failed: 0, skipped: 0 };
+  const stats = { transferred: 0, failed: 0, skipped: 0, bytes_transferred: 0 };
   const errorLog = [];
 
   for (const item of selectedItems) {
@@ -74,19 +80,32 @@ const worker = new Worker('transfer', async (job) => {
         const downloaded = await downloadFile(sourceDrive, fileRes.data);
         await uploadFile(destDrive, downloaded, null);
         stats.transferred++;
+        stats.bytes_transferred += downloaded.size || 0;
       }
     } catch (err) {
       stats.failed++;
       errorLog.push({ file: item.name, error: err.message });
     }
-    await updateJob(jobId, { transferred: stats.transferred, failed: stats.failed, error_log: errorLog });
+    await updateJob(jobId, {
+      transferred: stats.transferred,
+      failed: stats.failed,
+      bytes_transferred: stats.bytes_transferred,
+      error_log: errorLog,
+    });
   }
 
   const finalStatus = stats.failed > 0 && stats.transferred === 0 ? 'failed' : 'completed';
-  await updateJob(jobId, { status: finalStatus, transferred: stats.transferred, failed: stats.failed, error_log: errorLog });
-  console.log(`Job ${jobId} ${finalStatus}`);
+  await updateJob(jobId, {
+    status: finalStatus,
+    transferred: stats.transferred,
+    failed: stats.failed,
+    bytes_transferred: stats.bytes_transferred,
+    error_log: errorLog,
+  });
+  console.log(`Job ${jobId} ${finalStatus}: ${stats.transferred} files, ${stats.bytes_transferred} bytes`);
 
 }, { connection, concurrency: 2 });
 
 worker.on('failed', (job, err) => console.error(`Job ${job?.id} failed:`, err.message));
+worker.on('error', (err) => console.error('Worker error:', err.message));
 console.log('Transfer worker running...');
